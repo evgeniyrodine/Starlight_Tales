@@ -1,0 +1,5 @@
+{
+  "name": "Starlight Tales - Magical AI Fairy Tale Generator",
+  "description": "Create personalized, illustrated children's books using Gemini 3 models. Choose your theme, child's name, and language to generate a full-length fairy tale with high-quality AI images, downloadable as a PDF.",
+  "requestFramePermissions": []
+}
