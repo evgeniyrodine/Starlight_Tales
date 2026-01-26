@@ -1,176 +1,185 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { generateStoryStructure, generateImage, generateAudio, decodeBase64, decodeAudioData } from './services/geminiService';
-import { Story, Language, AgeGroup, StoryMode } from './types';
-import ChatBot from './components/ChatBot';
+import { generateStoryStructure, generateImage, generateAudio, pcmToWav } from './services/geminiService';
+import { Story, Language, AgeGroup, StoryMode, StoryChapter } from './types';
 import { translations } from './translations';
 
 const LANGUAGES: Language[] = ['English', 'Russian', 'Spanish', 'French', 'German', 'Chinese', 'Japanese'];
-const AGE_GROUPS: AgeGroup[] = ['0-2', '3-5', '6-8'];
+const AGE_GROUPS: AgeGroup[] = ['0-2', '3-6', '7-10'];
 
 const App: React.FC = () => {
   const [name, setName] = useState('');
   const [theme, setTheme] = useState('');
-  const [language, setLanguage] = useState<Language>('Russian');
-  const [ageGroup, setAgeGroup] = useState<AgeGroup>('3-5');
+  const [language, setLanguage] = useState<Language>('English');
+  const [ageGroup, setAgeGroup] = useState<AgeGroup>('3-6');
   const [mode, setMode] = useState<StoryMode>('BOOK');
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [story, setStory] = useState<Story | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-
-  const t = translations[language] || translations.Russian;
-  const storyContentRef = useRef<HTMLDivElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   
-  const hasApiKey = !!process.env.API_KEY;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const storyContentRef = useRef<HTMLDivElement>(null);
+  const t = translations[language] || translations.English;
 
-  const playAudio = async (base64Data: string) => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  useEffect(() => {
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
       }
-      const ctx = audioContextRef.current;
-      const bytes = decodeBase64(base64Data);
-      const buffer = await decodeAudioData(bytes, ctx);
-      
-      if (audioSourceRef.current) {
-        audioSourceRef.current.stop();
+    };
+  }, [audioUrl]);
+
+  const handleAudioToggle = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch(error => {
+            console.error("Playback failed:", error);
+            setIsPlaying(false);
+          });
       }
-      
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.onended = () => setIsPlaying(false);
-      source.start();
-      audioSourceRef.current = source;
-      setIsPlaying(true);
-    } catch (err) {
-      console.error("Audio playback error:", err);
     }
   };
 
-  const stopAudio = () => {
-    if (audioSourceRef.current) {
-      audioSourceRef.current.stop();
-      setIsPlaying(false);
+  const downloadAudio = () => {
+    if (!story?.audioData) return;
+    const blob = pcmToWav(story.audioData);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${story.title || 'FairyTale'}.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPdf = async () => {
+    if (!story || !storyContentRef.current || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const { jsPDF } = (window as any).jspdf;
+      const html2canvas = (window as any).html2canvas;
+      const doc = new jsPDF('p', 'pt', 'a4');
+      const pages = storyContentRef.current.querySelectorAll('.pdf-page');
+      
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i] as HTMLElement;
+        const canvas = await html2canvas(page, { scale: 2, useCORS: true, logging: false });
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+        const pdfWidth = doc.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        if (i > 0) doc.addPage();
+        doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      }
+      doc.save(`${story.title || 'FairyTale'}.pdf`);
+    } catch (err) {
+      alert('PDF export failed.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   const handleGenerate = async () => {
-    if (!name || !theme) {
-      alert(language === 'Russian' ? 'Пожалуйста, введите имя и тему!' : 'Please enter name and theme!');
-      return;
-    }
+    if (!name || !theme) return;
     setIsLoading(true);
     setStory(null);
     setAudioUrl(null);
-    stopAudio();
-
+    setCurrentSlide(0);
+    setIsPlaying(false);
+    
     try {
       setLoadingStep(t.step1);
       const storyData = await generateStoryStructure(name, theme, language, ageGroup);
       storyData.mode = mode;
       
       setLoadingStep(t.step2);
-      storyData.coverImageUrl = await generateImage(`Magical cover for children story titled: ${storyData.title}`, ageGroup);
+      storyData.coverImageUrl = await generateImage(`Magical cover: ${storyData.title}`, ageGroup);
 
-      setLoadingStep(t.step3);
-      const updatedChapters = [];
+      const updatedChapters: StoryChapter[] = [];
       for (let i = 0; i < storyData.chapters.length; i++) {
         setLoadingStep(t.stepChapter(i + 1, storyData.chapters.length));
-        const ch = storyData.chapters[i];
-        const img = await generateImage(ch.illustrationPrompt, ageGroup);
-        updatedChapters.push({ ...ch, imageUrl: img });
+        const img = await generateImage(storyData.chapters[i].illustrationPrompt, ageGroup);
+        updatedChapters.push({ ...storyData.chapters[i], imageUrl: img });
       }
       storyData.chapters = updatedChapters;
 
-      if (mode === 'AUDIO' && hasApiKey) {
+      if (mode === 'AUDIO') {
         setLoadingStep(t.step4);
         const fullText = storyData.chapters.map(c => c.content).join(" ");
         const audioBase64 = await generateAudio(fullText, language);
         storyData.audioData = audioBase64;
+        
+        const blob = pcmToWav(audioBase64);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
       }
 
       setStory(storyData);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      alert(`Ошибка генерации: ${err.message}`);
+      alert(t.errorMagic);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!story || !storyContentRef.current) return;
-    try {
-      const { jsPDF } = (window as any).jspdf;
-      const doc = new jsPDF('p', 'mm', 'a4');
-      const canvas = await (window as any).html2canvas(storyContentRef.current, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/jpeg', 0.8);
-      const pdfWidth = doc.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      doc.save(`${story.title}.pdf`);
-    } catch (err) {
-      alert("Не удалось создать PDF");
+  const onTimeUpdate = () => {
+    if (!audioRef.current || !story) return;
+    const progress = audioRef.current.currentTime / audioRef.current.duration;
+    if (isNaN(progress)) return;
+    
+    const chapterIndex = Math.floor(progress * story.chapters.length);
+    if (chapterIndex < story.chapters.length && chapterIndex !== currentSlide) {
+      setCurrentSlide(chapterIndex);
     }
   };
 
-  return (
-    <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
-      {!hasApiKey && !isLoading && (
-        <div className="bg-amber-50 border-l-4 border-amber-400 text-amber-800 p-4 mb-8 rounded shadow-sm text-sm flex items-center gap-3">
-          <span className="text-xl">⚠️</span>
-          <div>
-            <strong>API_KEY не обнаружен.</strong> Приложение работает в <strong>демо-режиме</strong> с использованием заготовленных данных. 
-            Для полноценной работы добавьте API_KEY в настройки окружения.
-          </div>
-        </div>
-      )}
+  const reset = () => {
+    setStory(null);
+    setAudioUrl(null);
+    setIsPlaying(false);
+    setCurrentSlide(0);
+  };
 
-      <header className="text-center mb-10">
-        <h1 className="text-5xl font-pacifico text-indigo-600 drop-shadow-sm mb-2">{t.title}</h1>
-        <p className="text-slate-500 font-medium">{t.subtitle}</p>
+  return (
+    <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
+      <header className="text-center mb-8">
+        <h1 className="text-5xl font-pacifico text-indigo-600 drop-shadow-sm">{t.title}</h1>
+        <p className="text-slate-500 mt-2">{t.subtitle}</p>
       </header>
 
-      {!story && !isLoading && (
-        <div className="bg-white rounded-3xl shadow-xl p-6 md:p-10 space-y-8 border border-indigo-50 animate-fade-in">
+      {!story ? (
+        <div className="bg-white rounded-3xl shadow-xl p-6 md:p-10 space-y-6 border border-indigo-50">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-600 ml-1">{t.childName}</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t.childPlaceholder}
-                className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-indigo-400 outline-none transition-all"
-              />
+              <label className="text-sm font-bold text-slate-600">{t.childName}</label>
+              <input type="text" placeholder={t.childPlaceholder} className="w-full px-6 py-4 bg-slate-50 rounded-2xl outline-none ring-indigo-400 focus:ring-2" value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-600 ml-1">{t.language}</label>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
-                className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-indigo-400 outline-none transition-all"
-              >
+              <label className="text-sm font-bold text-slate-600">{t.language}</label>
+              <select className="w-full px-6 py-4 bg-slate-50 rounded-2xl outline-none" value={language} onChange={e => setLanguage(e.target.value as Language)}>
                 {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-600 ml-1">{t.ageGroup}</label>
-            <div className="flex gap-4">
+            <label className="text-sm font-bold text-slate-600">{t.ageGroup}</label>
+            <div className="grid grid-cols-3 gap-2">
               {AGE_GROUPS.map(age => (
-                <button
-                  key={age}
-                  onClick={() => setAgeGroup(age)}
-                  className={`flex-1 py-3 rounded-2xl border-2 transition-all font-bold ${
-                    ageGroup === age ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 bg-slate-50 text-slate-400'
-                  }`}
-                >
+                <button key={age} onClick={() => setAgeGroup(age as AgeGroup)} className={`py-3 rounded-xl font-bold border-2 transition-all ${ageGroup === age ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-slate-100 text-slate-400'}`}>
                   {t.ageLabel(age)}
                 </button>
               ))}
@@ -178,167 +187,108 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-600 ml-1">{t.modeSelect}</label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button
-                onClick={() => setMode('BOOK')}
-                className={`p-4 rounded-2xl border-2 transition-all text-left flex gap-4 items-center ${
-                  mode === 'BOOK' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-slate-50'
-                }`}
-              >
-                <span className="text-3xl">📖</span>
-                <div>
-                  <div className={`font-bold ${mode === 'BOOK' ? 'text-indigo-700' : 'text-slate-600'}`}>{t.modeBook}</div>
-                  <div className="text-xs text-slate-400">{t.modeBookDesc}</div>
-                </div>
+            <label className="text-sm font-bold text-slate-600">{t.modeSelect}</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setMode('BOOK')} className={`p-4 rounded-2xl border-2 text-left transition-all ${mode === 'BOOK' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100'}`}>
+                <div className="text-2xl mb-1">📖</div>
+                <div className="font-bold">{t.modeBook}</div>
+                <div className="text-xs text-slate-500">{t.modeBookDesc}</div>
               </button>
-              <button
-                onClick={() => setMode('AUDIO')}
-                className={`p-4 rounded-2xl border-2 transition-all text-left flex gap-4 items-center ${
-                  mode === 'AUDIO' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-slate-50'
-                }`}
-              >
-                <span className="text-3xl">🎙️</span>
-                <div>
-                  <div className={`font-bold ${mode === 'AUDIO' ? 'text-indigo-700' : 'text-slate-600'}`}>{t.modeAudio}</div>
-                  <div className="text-xs text-slate-400">{t.modeAudioDesc}</div>
-                </div>
+              <button onClick={() => setMode('AUDIO')} className={`p-4 rounded-2xl border-2 text-left transition-all ${mode === 'AUDIO' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100'}`}>
+                <div className="text-2xl mb-1">🎧</div>
+                <div className="font-bold">{t.modeAudio}</div>
+                <div className="text-xs text-slate-500">{t.modeAudioDesc}</div>
               </button>
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-600 ml-1">{t.theme}</label>
-            <textarea
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              placeholder={t.themePlaceholder}
-              rows={3}
-              className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-indigo-400 outline-none transition-all"
-            />
+            <label className="text-sm font-bold text-slate-600">{t.theme}</label>
+            <textarea placeholder={t.themePlaceholder} className="w-full px-6 py-4 bg-slate-50 rounded-2xl outline-none ring-indigo-400 focus:ring-2 h-24" value={theme} onChange={e => setTheme(e.target.value)} />
           </div>
 
-          <button
-            onClick={handleGenerate}
-            disabled={!name || !theme}
-            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl font-bold text-xl shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
-          >
-            <span>✨</span> {t.generateBtn}
+          <button onClick={handleGenerate} disabled={isLoading || !name || !theme} className="w-full py-5 rounded-2xl font-bold text-xl bg-indigo-600 text-white shadow-lg disabled:bg-slate-200 disabled:text-slate-400 transition-all">
+            {isLoading ? <span className="flex items-center justify-center gap-3"><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {loadingStep}</span> : `✨ ${t.generateBtn}`}
           </button>
         </div>
-      )}
-
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-          <div className="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center mb-6 relative overflow-hidden">
-            <span className="text-5xl animate-bounce z-10">✨</span>
-            <div className="absolute inset-0 bg-gradient-to-t from-indigo-200 to-transparent animate-pulse"></div>
-          </div>
-          <h2 className="text-2xl font-bold text-indigo-800 mb-2">{t.creatingMagic}</h2>
-          <p className="text-slate-500 italic text-center px-4">{loadingStep}</p>
-          <div className="mt-8 w-64 h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-            <div className="h-full bg-indigo-500 animate-[loading_2s_infinite_linear]" style={{ width: '100%', backgroundSize: '200% 100%', backgroundImage: 'linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.3) 50%, transparent 75%)' }}></div>
-          </div>
-        </div>
-      )}
-
-      {story && (
-        <div className="space-y-10 animate-fade-in">
-          <div className="flex justify-between items-center bg-white/80 p-4 rounded-2xl backdrop-blur-md sticky top-4 z-20 border border-white shadow-lg">
-            <button
-              onClick={() => { setStory(null); stopAudio(); }}
-              className="text-indigo-600 font-bold hover:bg-indigo-50 px-4 py-2 rounded-xl transition-colors"
-            >
-              {t.startOver}
-            </button>
+      ) : (
+        <div className="space-y-8 animate-fade-in">
+          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border sticky top-4 z-20">
+            <button onClick={reset} className="text-slate-400 font-bold px-4">{t.startOver}</button>
             <div className="flex gap-2">
-              {story.audioData && (
-                <button
-                  onClick={() => isPlaying ? stopAudio() : playAudio(story.audioData!)}
-                  className={`flex items-center gap-2 px-6 py-2 rounded-full font-bold shadow-md transition-all ${
-                    isPlaying ? 'bg-rose-500 text-white animate-pulse' : 'bg-green-500 text-white hover:bg-green-600'
-                  }`}
-                >
-                  {isPlaying ? '⏹️ Stop' : '▶️ Play Audio'}
+              {story.mode === 'BOOK' ? (
+                <button onClick={downloadPdf} disabled={isDownloading} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">
+                  {isDownloading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '📥'} {t.downloadPdf}
+                </button>
+              ) : (
+                <button onClick={downloadAudio} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2">
+                  📥 {t.downloadAudio}
                 </button>
               )}
-              <button
-                onClick={handleDownloadPdf}
-                className="bg-indigo-600 text-white px-6 py-2 rounded-full font-bold shadow-md hover:bg-indigo-700 transition-colors"
-              >
-                {t.downloadPdf}
-              </button>
             </div>
           </div>
 
-          <div ref={storyContentRef} className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-indigo-50">
-            {/* Обложка */}
-            <div className="relative h-[650px] flex items-center justify-center bg-indigo-900 overflow-hidden">
-              <img 
-                src={story.coverImageUrl} 
-                alt="Cover" 
-                className="absolute inset-0 w-full h-full object-cover opacity-60 scale-105"
-              />
-              <div className="relative z-10 text-center p-10 max-w-2xl text-white">
-                <span className="block text-indigo-200 font-bold tracking-[0.4em] mb-6 text-xs uppercase">{t.aStarlightTale}</span>
-                <h1 className="text-6xl md:text-7xl font-pacifico mb-8 drop-shadow-2xl leading-tight">{story.title}</h1>
-                <div className="h-1.5 w-32 bg-indigo-400/50 mx-auto mb-8 rounded-full"></div>
-                <p className="text-2xl font-medium italic opacity-95">{t.forAmazing(story.childName)}</p>
+          {story.mode === 'BOOK' ? (
+            <div ref={storyContentRef} className="space-y-12">
+              <div className="pdf-page bg-white p-8 md:p-16 rounded-3xl shadow-xl text-center flex flex-col items-center justify-center min-h-[700px] w-full">
+                <h1 className="text-4xl font-pacifico text-indigo-600 mb-4">{story.title}</h1>
+                <p className="text-slate-400 italic mb-8">{t.forAmazing(story.childName)}</p>
+                {story.coverImageUrl && <img src={story.coverImageUrl} className="w-full max-w-md rounded-2xl shadow-2xl border-8 border-white" crossOrigin="anonymous" />}
               </div>
-            </div>
-
-            {/* Главы */}
-            <div className="p-8 md:p-20 space-y-32">
-              {story.chapters.map((chapter, idx) => (
-                <div key={idx} className={`flex flex-col gap-12 ${idx % 2 !== 0 ? 'md:flex-row-reverse' : 'md:flex-row'} items-center`}>
-                  <div className="flex-1 w-full max-w-lg">
-                    <div className="relative group">
-                      <div className="absolute -inset-6 bg-indigo-100/50 rounded-[3rem] rotate-2 scale-95 group-hover:rotate-0 transition-transform duration-500"></div>
-                      <img 
-                        src={chapter.imageUrl} 
-                        alt={chapter.title} 
-                        className="relative rounded-[2.5rem] shadow-2xl w-full aspect-square object-cover z-10 border-4 border-white"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-8">
-                    <div className="flex items-center gap-4">
-                      <div className="h-0.5 flex-1 bg-slate-100"></div>
-                      <span className="text-indigo-400 font-bold text-xs tracking-[0.3em] uppercase">{t.chapterLabel(idx + 1)}</span>
-                      <div className="h-0.5 flex-1 bg-slate-100"></div>
-                    </div>
-                    <h2 className="text-4xl md:text-5xl font-bold text-slate-800 leading-tight">{chapter.title}</h2>
-                    <p className="text-xl md:text-2xl text-slate-600 leading-relaxed font-light first-letter:text-6xl first-letter:font-pacifico first-letter:text-indigo-500 first-letter:mr-3 first-letter:float-left">
-                      {chapter.content}
-                    </p>
-                  </div>
+              {story.chapters.map((ch, idx) => (
+                <div key={idx} className="pdf-page bg-white p-8 md:p-16 rounded-3xl shadow-xl space-y-8 min-h-[800px] w-full">
+                  <h2 className="text-2xl font-bold text-slate-800">{t.chapterLabel(idx + 1)}: {ch.title}</h2>
+                  {ch.imageUrl && <img src={ch.imageUrl} className="w-full aspect-square object-cover rounded-2xl shadow-md" crossOrigin="anonymous" />}
+                  <p className="text-lg leading-relaxed text-slate-700 whitespace-pre-wrap">{ch.content}</p>
                 </div>
               ))}
             </div>
-
-            {/* Футер книги */}
-            <div className="bg-indigo-50/50 p-10 text-center border-t border-indigo-100">
-               <span className="font-pacifico text-2xl text-indigo-400">The End</span>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden aspect-square relative group">
+              {audioUrl && (
+                <audio 
+                  ref={audioRef} 
+                  src={audioUrl}
+                  onTimeUpdate={onTimeUpdate}
+                  onEnded={() => setIsPlaying(false)}
+                  className="hidden"
+                />
+              )}
+              <img 
+                src={story.chapters[currentSlide]?.imageUrl || story.coverImageUrl} 
+                className="w-full h-full object-cover transition-all duration-1000" 
+                crossOrigin="anonymous"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-8 text-white">
+                <div className="mb-6">
+                  <h2 className="text-3xl font-bold mb-2">{story.title}</h2>
+                  <p className="text-lg opacity-80">{t.chapterLabel(currentSlide + 1)}: {story.chapters[currentSlide]?.title}</p>
+                </div>
+                <div className="flex items-center gap-6">
+                   <button 
+                    onClick={handleAudioToggle} 
+                    className="bg-white text-indigo-600 w-20 h-20 rounded-full text-3xl shadow-2xl hover:scale-110 transition-transform flex items-center justify-center focus:outline-none"
+                  >
+                    {isPlaying ? '⏸' : '▶'}
+                  </button>
+                  <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                    if (!audioRef.current) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const pct = x / rect.width;
+                    audioRef.current.currentTime = pct * audioRef.current.duration;
+                  }}>
+                    <div 
+                      className="h-full bg-indigo-400 transition-all duration-150" 
+                      style={{ width: `${audioRef.current ? (audioRef.current.currentTime / audioRef.current.duration) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
-
-      <ChatBot language={language} />
-
-      <style>{`
-        @keyframes loading {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        .animate-fade-in {
-          animation: fadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 };

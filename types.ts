@@ -6,7 +6,7 @@ export interface StoryChapter {
   imageUrl?: string;
 }
 
-export type AgeGroup = '0-2' | '3-5' | '6-8';
+export type AgeGroup = '0-2' | '3-6' | '7-10';
 export type StoryMode = 'BOOK' | 'AUDIO';
 
 export interface Story {
