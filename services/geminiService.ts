@@ -1,8 +1,7 @@
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Story, AgeGroup } from "../types";
 
-const createAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const createAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 export const generateStoryStructure = async (
   name: string,
@@ -53,7 +52,7 @@ export const generateStoryStructure = async (
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: { parts: [{ text: prompt }] },
       config: {
         systemInstruction: `You are a world-class children's book author. You specialize in writing for the ${ageGroup} age group in ${language}. You always respond with valid JSON that strictly follows the provided schema. You ensure your stories are safe, magical, and appropriate for kids. You are extremely strict about meeting word count targets to ensure the desired reading duration of ${durationMinutes} minutes.`,
         responseMimeType: "application/json",
@@ -105,7 +104,7 @@ export const chatWithGemini = async (message: string, language: string): Promise
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: message,
+      contents: { parts: [{ text: message }] },
       config: {
         systemInstruction: `You are a helpful assistant for a children's story application called Starlight Tales. You help users brainstorm story ideas, explain themes, and answer questions about children's literature in ${language}. Keep your tone magical, friendly, and appropriate for parents and children.`,
       },
@@ -122,7 +121,7 @@ export const generateAudio = async (text: string, language: string): Promise<str
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: `Narrate this children's story in ${language} with a warm, storytelling voice. Read at a steady, engaging pace suitable for bedtime: ${text}`,
+      contents: [{ parts: [{ text: `Narrate this children's story in ${language} with a warm, storytelling voice. Read at a steady, engaging pace suitable for bedtime: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
