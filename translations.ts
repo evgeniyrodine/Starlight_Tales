@@ -1,5 +1,5 @@
 
-import { Language } from './types';
+import { Language } from './types.ts';
 
 const baseEn = {
   title: 'Starlight Tales',
@@ -30,11 +30,6 @@ const baseEn = {
   play: 'Play',
   forAmazing: (name: string) => `For the amazing ${name}`,
   chapterLabel: (idx: number) => `Chapter ${idx}`,
-  aStarlightTale: 'A STARLIGHT TALE',
-  helperTitle: 'Fairy Helper',
-  helperPlaceholder: 'Ask me anything...',
-  helperWriting: 'Writing...',
-  helperInitial: 'Ask me anything about your story!',
   errorMagic: 'The magic fizzled out! Try again.',
 };
 
@@ -67,11 +62,6 @@ const baseRu = {
   play: 'Слушать',
   forAmazing: (name: string) => `Для чудесного ребенка по имени ${name}`,
   chapterLabel: (idx: number) => `Глава ${idx}`,
-  aStarlightTale: 'ЗВЁЗДНАЯ СКАЗКА',
-  helperTitle: 'Помощник Феи',
-  helperPlaceholder: 'Спроси меня о чем угодно...',
-  helperWriting: 'Пишу...',
-  helperInitial: 'Спроси меня что-нибудь о твоей сказке!',
   errorMagic: 'Магия рассеялась! Попробуйте еще раз.',
 };
 

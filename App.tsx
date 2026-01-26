@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { generateStoryStructure, generateImage, generateAudio, pcmToWav } from './services/geminiService';
-import { Story, Language, AgeGroup, StoryMode, StoryChapter } from './types';
-import { translations } from './translations';
+import { generateStoryStructure, generateImage, generateAudio, pcmToWav } from './services/geminiService.ts';
+import { Story, Language, AgeGroup, StoryMode, StoryChapter } from './types.ts';
+import { translations } from './translations.ts';
 
 const LANGUAGES: Language[] = ['English', 'Russian', 'Spanish', 'French', 'German', 'Chinese', 'Japanese'];
 const AGE_GROUPS: AgeGroup[] = ['0-2', '3-6', '7-10'];
