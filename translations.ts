@@ -1,5 +1,5 @@
 
-import { Language } from './types.ts';
+import { Language } from './types';
 
 const baseEn = {
   title: 'Starlight Tales',
@@ -31,6 +31,10 @@ const baseEn = {
   forAmazing: (name: string) => `For the amazing ${name}`,
   chapterLabel: (idx: number) => `Chapter ${idx}`,
   errorMagic: 'The magic fizzled out! Try again.',
+  helperTitle: 'Tale Assistant',
+  helperInitial: 'Hi! I can help you with story ideas or answer questions about the magic of Starlight Tales.',
+  helperWriting: 'Writing...',
+  helperPlaceholder: 'Ask me anything...',
 };
 
 const baseRu = {
@@ -63,14 +67,18 @@ const baseRu = {
   forAmazing: (name: string) => `Для чудесного ребенка по имени ${name}`,
   chapterLabel: (idx: number) => `Глава ${idx}`,
   errorMagic: 'Магия рассеялась! Попробуйте еще раз.',
+  helperTitle: 'Помощник',
+  helperInitial: 'Привет! Я могу помочь придумать тему для сказки или ответить на вопросы.',
+  helperWriting: 'Пишет...',
+  helperPlaceholder: 'Спросите что-нибудь...',
 };
 
 export const translations: Record<Language, any> = {
   English: baseEn,
   Russian: baseRu,
-  Spanish: { ...baseEn, title: 'Cuentos de Luz de Estrellas', downloadPdf: 'Descargar PDF', downloadAudio: 'Descargar Audio', errorMagic: '¡La magia falló! Inténtalo de nuevo.' },
-  French: { ...baseEn, title: 'Contes des Étoiles', downloadPdf: 'Télécharger PDF', downloadAudio: 'Télécharger Audio', errorMagic: 'La magie a échoué ! Réessayez.' },
-  German: { ...baseEn, title: 'Sternenlicht-Märchen', downloadPdf: 'PDF herunterladen', downloadAudio: 'Audio herunterladen', errorMagic: 'Die Magie ist verflogen! Versuchen Sie es erneut.' },
-  Chinese: { ...baseEn, title: '星光传说', downloadPdf: '下载 PDF', downloadAudio: '下载音频', errorMagic: '魔法失效了！请再试一次。' },
-  Japanese: { ...baseEn, title: '星光の物語', downloadPdf: 'PDFをダウンロード', downloadAudio: 'オーディオをダウンロード', errorMagic: '魔法が消えてしまいました！もう一度お試しください。' }
+  Spanish: { ...baseEn, title: 'Cuentos de Luz de Estrellas', downloadPdf: 'Descargar PDF', downloadAudio: 'Descargar Audio', errorMagic: '¡La magia falló! Inténtalo de nuevo.', helperTitle: 'Asistente', helperPlaceholder: 'Pregúntame algo...' },
+  French: { ...baseEn, title: 'Contes des Étoiles', downloadPdf: 'Télécharger PDF', downloadAudio: 'Télécharger Audio', errorMagic: 'La magie a échoué ! Réessayez.', helperTitle: 'Assistant', helperPlaceholder: 'Posez-moi une question...' },
+  German: { ...baseEn, title: 'Sternenlicht-Märchen', downloadPdf: 'PDF herunterladen', downloadAudio: 'Audio herunterladen', errorMagic: 'Die Magie ist verflogen! Versuchen Sie es erneut.', helperTitle: 'Assistent', helperPlaceholder: 'Frag mich was...' },
+  Chinese: { ...baseEn, title: '星光传说', downloadPdf: '下载 PDF', downloadAudio: '下载音频', errorMagic: '魔法失效了！请再试一次。', helperTitle: '助手', helperPlaceholder: '问我任何问题...' },
+  Japanese: { ...baseEn, title: '星光の物語', downloadPdf: 'PDFをダウンロード', downloadAudio: 'オーディオをダウンロード', errorMagic: '魔法が消えてしまいました！もう一度お試しください。', helperTitle: 'アシスタント', helperPlaceholder: '何でも聞いてください...' }
 };

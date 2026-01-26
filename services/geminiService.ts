@@ -1,13 +1,9 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Story, AgeGroup } from "../types.ts";
+import { Story, AgeGroup } from "../types";
 
-// Helper to create a new AI instance using the required API key from environment
 const createAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-/**
- * Generates the structure of a fairy tale including chapters and image prompts.
- */
 export const generateStoryStructure = async (
   name: string,
   theme: string,
@@ -24,12 +20,12 @@ export const generateStoryStructure = async (
   if (ageGroup === '0-2') {
     chapterCount = 3;
     wordTarget = "400-450 words total";
-    complexity = "extremely simple, rhythmic, repetitive sounds, short sentences, focus on sensory details";
+    complexity = "extremely simple, rhythmic, repetitive sounds, short sentences, focus on sensory details and objects";
     durationMinutes = 3;
   } else if (ageGroup === '3-6') {
     chapterCount = 5;
     wordTarget = "700-750 words total";
-    complexity = "playful, clear, imaginative, descriptive but easy to follow with a clear moral or lesson";
+    complexity = "playful, clear, imaginative, descriptive but easy to follow with a clear moral or adventure";
     durationMinutes = 5;
   } else if (ageGroup === '7-10') {
     chapterCount = 6;
@@ -102,7 +98,7 @@ export const generateStoryStructure = async (
 };
 
 /**
- * Fix for: Module '"../services/geminiService"' has no exported member 'chatWithGemini'
+ * Handles chatbot interactions to assist users with story ideas or questions.
  */
 export const chatWithGemini = async (message: string, language: string): Promise<string> => {
   const ai = createAI();
@@ -111,19 +107,16 @@ export const chatWithGemini = async (message: string, language: string): Promise
       model: 'gemini-3-flash-preview',
       contents: message,
       config: {
-        systemInstruction: `You are a helpful assistant for a children's fairy tale app called Starlight Tales. Answer questions about the stories, help brainstorm ideas for new stories, or just chat in a friendly manner. Respond in ${language}.`,
+        systemInstruction: `You are a helpful assistant for a children's story application called Starlight Tales. You help users brainstorm story ideas, explain themes, and answer questions about children's literature in ${language}. Keep your tone magical, friendly, and appropriate for parents and children.`,
       },
     });
-    return response.text || '';
+    return response.text || "";
   } catch (error) {
     console.error("Chat Error:", error);
     throw error;
   }
 };
 
-/**
- * Generates audio narration for the story.
- */
 export const generateAudio = async (text: string, language: string): Promise<string> => {
   const ai = createAI();
   try {
@@ -149,9 +142,6 @@ export const generateAudio = async (text: string, language: string): Promise<str
   }
 };
 
-/**
- * Converts raw PCM data to a WAV Blob.
- */
 export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
   const pcmData = decodeBase64(base64Pcm);
   const buffer = new ArrayBuffer(44 + pcmData.length);
@@ -168,8 +158,8 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
   writeString(8, 'WAVE');
   writeString(12, 'fmt ');
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // Mono
+  view.setUint16(20, 1, true); 
+  view.setUint16(22, 1, true); 
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
@@ -183,9 +173,6 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-/**
- * Generates an image based on a prompt.
- */
 export const generateImage = async (prompt: string, ageGroup: AgeGroup): Promise<string> => {
   const ai = createAI();
   const stylePrefix = "Cinematic 3D render, Pixar style, vivid colors, volumetric lighting, magical atmosphere, high detail. NO TEXT: ";
@@ -207,9 +194,6 @@ export const generateImage = async (prompt: string, ageGroup: AgeGroup): Promise
   }
 };
 
-/**
- * Manually implement base64 decoding to follow guidelines.
- */
 export function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -217,17 +201,4 @@ export function decodeBase64(base64: string) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
-}
-
-/**
- * Decodes PCM audio data for browser AudioContext.
- */
-export async function decodeAudioData(data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
-  const channelData = buffer.getChannelData(0);
-  for (let i = 0; i < dataInt16.length; i++) {
-    channelData[i] = dataInt16[i] / 32768.0;
-  }
-  return buffer;
 }
