@@ -3,10 +3,10 @@ import { Story, AgeGroup } from "../types";
 
 const getAI = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.error("Critical: API_KEY is missing. Ensure it is set in Vercel Environment Variables.");
+  if (!apiKey || apiKey === "undefined" || apiKey === "") {
+    throw new Error("Critical: API_KEY is missing or invalid. Please set it in Vercel Environment Variables.");
   }
-  return new GoogleGenAI({ apiKey: apiKey || "" });
+  return new GoogleGenAI({ apiKey: apiKey });
 };
 
 const SAFETY_SETTINGS = [
@@ -181,7 +181,6 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
 
 export const generateImage = async (prompt: string, ageGroup: AgeGroup): Promise<string> => {
   const ai = getAI();
-  // We use "3D animation style" instead of brand names like "Pixar" to reduce trigger-based blocks (Finish Reason: OTHER)
   const style = "High quality 3D animated movie style, magical fairytale atmosphere, soft cinematic lighting, vivid colors. NO TEXT, NO LOGOS. Subject: ";
 
   try {

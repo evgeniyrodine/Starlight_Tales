@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { generateStoryStructure, generateImage, generateAudio, pcmToWav } from './services/geminiService';
 import { Story, Language, AgeGroup, StoryMode, StoryChapter } from './types';
@@ -128,9 +127,10 @@ const App: React.FC = () => {
       }
 
       setStory(storyData);
-    } catch (err) {
-      console.error(err);
-      alert(t.errorMagic);
+    } catch (err: any) {
+      console.error("Generation Error Details:", err);
+      // Показываем конкретную ошибку пользователю для облегчения диагностики на Vercel
+      alert(`${t.errorMagic}\n\nDetails: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
