@@ -1,15 +1,13 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Story, AgeGroup } from "../types";
 
-const createAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 export const generateStoryStructure = async (
   name: string,
   theme: string,
   language: string,
   ageGroup: AgeGroup
 ): Promise<Story> => {
-  const ai = createAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   
   let chapterCount = 5;
   let wordTarget = "750 words total";
@@ -52,7 +50,7 @@ export const generateStoryStructure = async (
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: { parts: [{ text: prompt }] },
+      contents: prompt,
       config: {
         systemInstruction: `You are a world-class children's book author. You specialize in writing for the ${ageGroup} age group in ${language}. You always respond with valid JSON that strictly follows the provided schema. You ensure your stories are safe, magical, and appropriate for kids. You are extremely strict about meeting word count targets to ensure the desired reading duration of ${durationMinutes} minutes.`,
         responseMimeType: "application/json",
@@ -96,15 +94,12 @@ export const generateStoryStructure = async (
   }
 };
 
-/**
- * Handles chatbot interactions to assist users with story ideas or questions.
- */
 export const chatWithGemini = async (message: string, language: string): Promise<string> => {
-  const ai = createAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ text: message }] },
+      contents: message,
       config: {
         systemInstruction: `You are a helpful assistant for a children's story application called Starlight Tales. You help users brainstorm story ideas, explain themes, and answer questions about children's literature in ${language}. Keep your tone magical, friendly, and appropriate for parents and children.`,
       },
@@ -117,7 +112,7 @@ export const chatWithGemini = async (message: string, language: string): Promise
 };
 
 export const generateAudio = async (text: string, language: string): Promise<string> => {
-  const ai = createAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -173,7 +168,7 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
 }
 
 export const generateImage = async (prompt: string, ageGroup: AgeGroup): Promise<string> => {
-  const ai = createAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const stylePrefix = "Cinematic 3D render, Pixar style, vivid colors, volumetric lighting, magical atmosphere, high detail. NO TEXT: ";
 
   try {
