@@ -1,5 +1,20 @@
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Type, Modality, HarmBlockThreshold, HarmCategory } from "@google/genai";
 import { Story, AgeGroup } from "../types";
+
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.error("Critical: API_KEY is missing. Ensure it is set in Vercel Environment Variables.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || "" });
+};
+
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
 
 export const generateStoryStructure = async (
   name: string,
@@ -7,28 +22,24 @@ export const generateStoryStructure = async (
   language: string,
   ageGroup: AgeGroup
 ): Promise<Story> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = getAI();
   
   let chapterCount = 5;
   let wordTarget = "750 words total";
   let complexity = "engaging and descriptive";
-  let durationMinutes = 5;
 
   if (ageGroup === '0-2') {
     chapterCount = 3;
     wordTarget = "400-450 words total";
-    complexity = "extremely simple, rhythmic, repetitive sounds, short sentences, focus on sensory details and objects";
-    durationMinutes = 3;
+    complexity = "extremely simple, rhythmic, repetitive sounds, short sentences";
   } else if (ageGroup === '3-6') {
     chapterCount = 5;
     wordTarget = "700-750 words total";
-    complexity = "playful, clear, imaginative, descriptive but easy to follow with a clear moral or adventure";
-    durationMinutes = 5;
+    complexity = "playful, clear, imaginative, with a clear moral";
   } else if (ageGroup === '7-10') {
     chapterCount = 6;
     wordTarget = "1000-1100 words total";
-    complexity = "rich vocabulary, complex narrative arc, emotional depth, vivid world-building, and character growth";
-    durationMinutes = 7;
+    complexity = "rich vocabulary, complex narrative arc, emotional depth";
   }
 
   const prompt = `Write a delightful children's fairy tale in ${language} about "${theme}". 
@@ -37,22 +48,21 @@ export const generateStoryStructure = async (
   
   REQUIRED STRUCTURE:
   - Exactly ${chapterCount} chapters.
-  - Total story length MUST be approximately ${wordTarget} to ensure it takes ${durationMinutes} minutes to read at a storytelling pace.
-  - For each chapter, create a detailed, high-quality English image prompt for the illustrations.
-  - The illustrations must feature a consistent protagonist: describe them in detail in every prompt.
+  - Total story length MUST be approximately ${wordTarget}.
+  - For each chapter, create a detailed English image prompt for illustrations.
   - Use a magical, cinematic 3D Pixar-like animation style.
   
   CONSTRAINTS:
   - DO NOT use the child's name ("${name}") inside the story text itself.
-  - Output ONLY the JSON object. No conversational filler.
+  - Output ONLY the JSON object.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: { parts: [{ text: prompt }] },
       config: {
-        systemInstruction: `You are a world-class children's book author. You specialize in writing for the ${ageGroup} age group in ${language}. You always respond with valid JSON that strictly follows the provided schema. You ensure your stories are safe, magical, and appropriate for kids. You are extremely strict about meeting word count targets to ensure the desired reading duration of ${durationMinutes} minutes.`,
+        systemInstruction: `You are a world-class children's book author. You specialize in the ${ageGroup} age group in ${language}. Respond strictly in JSON. Ensure story length matches ${wordTarget}.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -72,12 +82,13 @@ export const generateStoryStructure = async (
             }
           },
           required: ["title", "chapters"]
-        }
+        },
+        safetySettings: SAFETY_SETTINGS
       }
     });
 
-    const text = response.text?.trim();
-    if (!text) throw new Error("Magic failed. Empty response.");
+    const text = response.text;
+    if (!text) throw new Error("AI returned empty text.");
     
     const data = JSON.parse(text);
     return {
@@ -95,13 +106,14 @@ export const generateStoryStructure = async (
 };
 
 export const chatWithGemini = async (message: string, language: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = getAI();
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: message,
+      contents: { parts: [{ text: message }] },
       config: {
-        systemInstruction: `You are a helpful assistant for a children's story application called Starlight Tales. You help users brainstorm story ideas, explain themes, and answer questions about children's literature in ${language}. Keep your tone magical, friendly, and appropriate for parents and children.`,
+        systemInstruction: `You are a magical fairy tale assistant for Starlight Tales. Help users in ${language}.`,
+        safetySettings: SAFETY_SETTINGS
       },
     });
     return response.text || "";
@@ -112,11 +124,11 @@ export const chatWithGemini = async (message: string, language: string): Promise
 };
 
 export const generateAudio = async (text: string, language: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const ai = getAI();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Narrate this children's story in ${language} with a warm, storytelling voice. Read at a steady, engaging pace suitable for bedtime: ${text}` }] }],
+      contents: [{ parts: [{ text: `Narrate this in ${language} warmly: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -128,7 +140,7 @@ export const generateAudio = async (text: string, language: string): Promise<str
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("Voice magic failed.");
+    if (!base64Audio) throw new Error("TTS failed.");
     return base64Audio;
   } catch (error) {
     console.error("Audio Generation Error:", error);
@@ -168,20 +180,41 @@ export function pcmToWav(base64Pcm: string, sampleRate: number = 24000): Blob {
 }
 
 export const generateImage = async (prompt: string, ageGroup: AgeGroup): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
-  const stylePrefix = "Cinematic 3D render, Pixar style, vivid colors, volumetric lighting, magical atmosphere, high detail. NO TEXT: ";
+  const ai = getAI();
+  // We use "3D animation style" instead of brand names like "Pixar" to reduce trigger-based blocks (Finish Reason: OTHER)
+  const style = "High quality 3D animated movie style, magical fairytale atmosphere, soft cinematic lighting, vivid colors. NO TEXT, NO LOGOS. Subject: ";
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: { parts: [{ text: `${stylePrefix}${prompt}` }] },
-      config: { imageConfig: { aspectRatio: "1:1" } },
+      contents: { parts: [{ text: `${style}${prompt}` }] },
+      config: { 
+        imageConfig: { aspectRatio: "1:1" },
+        safetySettings: SAFETY_SETTINGS
+      },
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    const candidate = response.candidates?.[0];
+    if (!candidate) throw new Error("No response candidate from image model.");
+
+    if (!candidate.content || !candidate.content.parts) {
+      const reason = candidate.finishReason || "Unknown";
+      throw new Error(`Model returned no content. Finish Reason: ${reason}. This may be due to safety filters.`);
     }
-    throw new Error("Painting failed.");
+
+    for (const part of candidate.content.parts) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+
+    const textExplanation = candidate.content.parts.find(p => p.text)?.text;
+    if (textExplanation) {
+      console.warn("Model returned text instead of image:", textExplanation);
+      throw new Error(`Image blocked: ${textExplanation}`);
+    }
+
+    throw new Error("Image generation failed for an unknown reason.");
   } catch (error) {
     console.error("Image Generation Error:", error);
     throw error;
